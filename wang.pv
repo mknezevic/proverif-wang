@@ -1,0 +1,247 @@
+type key.
+
+free blkch: channel. (*blockchain network*) 
+free GW_MP_pubch: channel. 
+free GW_S_pubch: channel. 
+free GW_MP_pvtch: channel [private].
+free GW_S_pvtch: channel [private].
+
+free fun_name_SNAuth: bitstring.
+
+(*sensor parameters*) 
+free S_ID: bitstring [private]. (*sensor id*)
+free S_C1, S_C2, S_C3: bitstring [private].  (* PUF challenges *)
+free S_R1, S_R2, S_R3: bitstring [private].  (* Corresponding responses, assumed secret *)
+
+(*MP parameters*) 
+free MP_ID: bitstring. 
+free MP_PW: bitstring [private].
+free MP_BIO: bitstring [private].   (* Raw biometric data *)
+free MP_C1, MP_C2, MP_C3: bitstring.  (* Predefined challenges *)
+free MP_R1, MP_R2, MP_R3: bitstring [private].  (* Corresponding responses, assumed secret *)
+
+(*GWN parameters*)
+free GWN_ID: bitstring.
+free GWN_g: bitstring [private].
+
+(*event definition*) 
+event MP_reg_start(). 
+event MP_reg_end().
+event MP_auth_start().
+event MP_auth_end().
+
+event S_reg_start().
+event S_reg_end().
+event S_auth_start().
+event S_auth_end().
+
+event GW_auth_start().
+event GW_auth_end().
+
+
+(* Event to track session key generation *)
+event sessionKeyGenerated(key).
+
+(*functon definition*)
+fun bitstring_to_key(bitstring): key [data, typeConverter].
+
+fun h(bitstring):bitstring.
+fun xor(bitstring,bitstring):bitstring.
+fun con(bitstring,bitstring):bitstring.
+fun dcon1(bitstring):bitstring.
+fun dcon2(bitstring):bitstring.
+
+fun Gen(bitstring): bitstring.
+fun Rep(bitstring): bitstring.
+fun fuzzy_extract(bitstring): bitstring.
+
+fun smart_contract(bitstring, bitstring): bitstring.
+fun sregister(bitstring, bitstring): bitstring.
+fun mpregister(bitstring, bitstring): bitstring.
+
+equation forall m:bitstring, n:bitstring; xor(xor(m,n),n)=m.
+equation forall b: bitstring; fuzzy_extract(b) = con(Gen(b), Rep(b)).
+
+equation forall m,n: bitstring; dcon1(con(m,n)) = m. 
+equation forall m,n: bitstring; dcon2(con(m,n)) = n.
+
+query attacker(S_C1).
+query attacker(S_R1).
+query attacker(MP_C1).
+query attacker(MP_R1).
+query attacker(MP_BIO). 
+
+query inj-event(MP_auth_end()) ==> inj-event(MP_auth_start()).
+query inj-event(GW_auth_end()) ==> inj-event(GW_auth_start()). 
+query inj-event(S_auth_end()) ==> inj-event(S_auth_start()).
+
+query x: key; attacker(x) && event(sessionKeyGenerated(x)).
+
+(*blockchain smart contract process*)
+let bcsc_process =
+
+    (*S register start*)
+	in(blkch, (b_S_ID: bitstring, b_S_C1: bitstring, b_S_C2: bitstring, b_S_C3: bitstring, b_S_R1: bitstring, b_S_R2: bitstring, b_S_R3: bitstring));
+    new SN_RSK: bitstring;
+    let SN_EC = h(con(SN_RSK, b_S_ID)) in
+	(* 'Store' the values on a public blockain *)
+    out(blkch, (b_S_ID, b_S_C1, b_S_C2, b_S_C3, b_S_R1, b_S_R2, b_S_R3, SN_RSK, SN_EC));
+
+    (* Return SN_EC to the Gateway *)
+    out(blkch, SN_EC);
+	(*S register end*)
+	
+	(*MP register start*)
+	in(blkch,(b_MP_ID:bitstring, b_MP_RPW:bitstring, b_MP_C1:bitstring, b_MP_C2:bitstring, b_MP_C3:bitstring, b_MP_R1:bitstring, b_MP_R2:bitstring, b_MP_R3:bitstring, b_MP_BIO:bitstring));
+	new MP_RSK: bitstring;
+    let combined_sk_rp = fuzzy_extract(b_MP_BIO) in
+	let MP_BIO_SK = dcon1(combined_sk_rp) in
+	let MP_BIO_RP = dcon2(combined_sk_rp) in
+	let RB = h(con(MP_BIO_SK, b_MP_ID)) in
+	let A = xor(h(con(con(MP_RSK,MP_BIO_RP),RB)), b_MP_RPW) in
+	let MP_EC = h(con(MP_RSK, b_MP_ID)) in
+	let B = xor(MP_EC, b_MP_RPW) in
+	(* 'Store' the values on a public blockain *)
+    out(blkch, (MP_BIO_RP, MP_BIO_SK, b_MP_ID, b_MP_RPW, MP_RSK, b_MP_C1, b_MP_C2, b_MP_C3, b_MP_R1, b_MP_R2, b_MP_R3));
+	
+	(* Return values to the Gateway *)
+    out(blkch, (RB, A, B, MP_BIO_RP));
+	(*MP register end*)
+	
+	(*MP auth start*)
+	in(blkch, (b_MP_ID_auth:bitstring, b_M1:bitstring, b_M3:bitstring, b_MP_C1_auth:bitstring));
+	let b_M2 = xor(b_M3,MP_R1) in
+	let b_M4 = h(con(A, b_MP_RPW)) in
+	let b_M4' = xor(b_M2, b_M1) in
+	if b_M4 = b_M4' then event MP_auth_end();
+	(*MP auth end*)
+	
+	(*GW auth start*)
+	new T2:bitstring;
+	let M5 = xor(h(con(b_M4, b_MP_R2)),A) in
+	out(blkch, (M5, b_MP_C2, T2));
+	(*GW auth end*)
+	
+	(*S auth start*)
+	in(blkch, fun_name: bitstring);
+	if fun_name = fun_name_SNAuth then
+		new T3:bitstring;
+		let M6 = h(con(b_S_R1, SN_EC)) in
+		let M7 = xor(b_M4, M6) in
+		out(blkch, (b_MP_ID, M6, M7, b_S_C1, T3));
+	
+	in(blkch, (fun_name_2: bitstring, b_M8: bitstring, b_MSK: bitstring, b_S_C2_auth: bitstring));
+	if fun_name_2 = fun_name_SNAuth then
+		let M8' = h(con(con(SN_EC, b_S_ID), b_S_R2)) in
+		if M8' = b_M8 then
+			new T5:bitstring;
+			let b_SN_SK = xor(b_MSK, b_S_R2) in
+			let M9 = xor(b_M8, MP_EC) in
+			let M10 = xor(b_SN_SK, MP_EC) in
+			out(blkch, (b_S_ID, M9, M10, T5));
+			event S_auth_end().
+	(*S auth end*)
+	
+(*sensor node process*)
+let S_process =
+
+	(*S register start*)
+	event S_reg_start();
+	out(GW_S_pvtch,(S_ID, S_C1, S_C2, S_C3, S_R1, S_R2, S_R3));
+	in(GW_S_pvtch, (SN_EC:bitstring));
+	event S_reg_end();
+	(*S register end*)
+	
+	(*S auth start*)
+	event S_auth_start();
+	in(GW_S_pubch, (s_MP_ID: bitstring, s_M6: bitstring, s_M7: bitstring, s_S_C1: bitstring, s_T3: bitstring));
+	let M6' = h(con(S_R1,SN_EC)) in
+	if M6' = s_M6 then
+		new T4:bitstring;
+		let M4 = xor(s_M7,s_M6) in
+		let M8 = h(con(con(SN_EC,S_ID),S_R2)) in
+		let SN_SK = h(con(M4,M8)) in
+		let MSK = xor(SN_SK,S_R2) in
+		out(GW_S_pubch, (M8, MSK, S_C2, T4)).
+	(*S auth end*)
+
+(*medical professional process*)
+let MP_process =
+
+	(*MP register start*)
+	event MP_reg_start();
+	new MP_N:bitstring;
+	let MP_RPW = h(con(MP_PW, MP_N)) in
+	out(GW_MP_pvtch, (MP_ID, MP_RPW, MP_C1, MP_C2, MP_C3, MP_R1, MP_R2, MP_R3, MP_BIO));
+	in(GW_MP_pvtch, (m_RB:bitstring, m_A:bitstring, m_B:bitstring, m_MP_BIO_RP:bitstring));
+	event MP_reg_end();
+	(*MP register end*)
+	
+	(*MP auth start*)
+	event MP_auth_start();
+	new T1: bitstring;
+    let MP_EC = xor(m_B, MP_RPW) in
+	let M1 = h(con(con(MP_EC,MP_N),MP_R1)) in
+	let M2 = xor(h(con(m_A, MP_RPW)), M1) in
+	let M3 = xor(M2, MP_R1) in 
+	out(GW_MP_pubch, (MP_ID, M1, M3, MP_C1, T1));
+	(*MP auth end*)
+	
+	(*GW auth start*)
+	in(GW_MP_pubch, (m_M5:bitstring, m_MP_C2:bitstring, m_T2:bitstring));
+	let m_M5' = xor(h(con(xor(M1, M2),MP_R2)),m_A) in
+	if m_M5 = m_M5' then event GW_auth_end();
+	(*GW auth end*)
+
+	(*S auth start*)
+	in(GW_MP_pubch, (m_S_ID:bitstring, m_M9:bitstring, m_M10:bitstring, m_T5:bitstring));
+	let M8 = xor(m_M9,MP_EC) in
+	let SN_SK = xor(m_M10, MP_EC) in
+	let M4 = h(con(m_A, MP_RPW)) in
+	let (MP_SK:bitstring) = h(con(M4, M8)) in
+	if SN_SK = MP_SK then 
+		let Ksession = bitstring_to_key(MP_SK) in
+		event sessionKeyGenerated(Ksession).
+	(*S auth end*)
+
+(*gateway node process*)
+let GWN_process =
+
+	(*S register start*)
+	in(GW_S_pvtch,(g_S_ID:bitstring, g_S_C1:bitstring, g_S_C2:bitstring, g_S_C3:bitstring, g_S_R1:bitstring, g_S_R2:bitstring, g_S_R3:bitstring));
+	out(blkch,(g_S_ID, g_S_C1, g_S_C2, g_S_C3, g_S_R1, g_S_R2, g_S_R3));
+	in(blkch, (SN_EC:bitstring));
+	out(GW_S_pvtch, SN_EC);
+	(*S register end*)
+	
+	(*MP register start*)
+	in(GW_MP_pvtch,(g_MP_ID:bitstring, g_MP_RPW:bitstring, g_MP_C1:bitstring, g_MP_C2:bitstring, g_MP_C3:bitstring, g_MP_R1:bitstring, g_MP_R2:bitstring, g_MP_R3:bitstring, g_MP_BIO:bitstring));
+	out(blkch,(g_MP_ID, g_MP_RPW, g_MP_C1, g_MP_C2, g_MP_C3, g_MP_R1, g_MP_R2, g_MP_R3,  g_MP_BIO));
+	in(blkch, (g_RB:bitstring, g_A:bitstring, g_B:bitstring, g_MP_BIO_RP:bitstring));
+	out(GW_MP_pvtch, (g_RB, g_A, g_B, g_MP_BIO_RP));
+	(*MP register end*)
+	
+	(*MP auth start*)
+	in(GW_MP_pubch, (g_MP_ID:bitstring, g_M1:bitstring, g_M3:bitstring, g_MP_C1:bitstring, g_T1:bitstring));
+	out(blkch, (g_MP_ID, g_M1, g_M3, g_MP_C1));
+	(*MP auth end*)
+	
+	(*GW auth start*)
+	event GW_auth_start();
+	in(blkch, (g_M5:bitstring, g_MP_C2:bitstring, g_T2:bitstring));
+	out(GW_MP_pubch, (g_M5, g_MP_C2, g_T2));
+	(*GW auth end*)
+	
+	(*S auth start*)
+	out(blkch, fun_name_SNAuth);
+	in(blkch, (g_MP_ID:bitstring, g_M6:bitstring, g_M7:bitstring, g_S_C1_auth:bitstring, g_T3:bitstring));
+	out(GW_S_pubch, (g_MP_ID, g_M6, g_M7, g_S_C1_auth, g_T3));
+	in(GW_S_pubch, (g_M8:bitstring, g_MSK:bitstring, g_S_C2_auth:bitstring, g_T4:bitstring));
+	out(blkch, (fun_name_SNAuth, g_M8, g_MSK, g_S_C2_auth, g_T4));
+	in(blkch, (g_S_ID:bitstring, g_M9:bitstring, g_M10:bitstring, g_T5:bitstring));
+	out(GW_MP_pubch, (g_S_ID, g_M9, g_M10, g_T5)).
+	(*S auth end*)
+
+
+process(S_process | MP_process | GWN_process | bcsc_process)
+
