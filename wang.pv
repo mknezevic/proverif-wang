@@ -51,6 +51,8 @@ fun con(bitstring,bitstring):bitstring.
 fun dcon1(bitstring):bitstring.
 fun dcon2(bitstring):bitstring.
 
+fun pair(bitstring, bitstring): bitstring.
+
 fun Gen(bitstring): bitstring.
 fun Rep(bitstring): bitstring.
 fun fuzzy_extract(bitstring): bitstring.
@@ -65,10 +67,11 @@ equation forall b: bitstring; fuzzy_extract(b) = con(Gen(b), Rep(b)).
 equation forall m,n: bitstring; dcon1(con(m,n)) = m. 
 equation forall m,n: bitstring; dcon2(con(m,n)) = n.
 
-query attacker(S_C1).
-query attacker(S_R1).
-query attacker(MP_C1).
-query attacker(MP_R1).
+reduc forall x: bitstring, y: bitstring; fst(pair(x, y)) = x.
+reduc forall x: bitstring, y: bitstring; snd(pair(x, y)) = y.
+
+query attacker(pair(S_C1, S_R1)).
+query attacker(pair(MP_C1, MP_R1)).
 query attacker(MP_BIO). 
 
 query inj-event(MP_auth_end()) ==> inj-event(MP_auth_start()).
@@ -244,4 +247,3 @@ let GWN_process =
 
 
 process(S_process | MP_process | GWN_process | bcsc_process)
-
