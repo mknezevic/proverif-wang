@@ -10,15 +10,15 @@ free fun_name_SNAuth: bitstring.
 
 (*SN parameters*) 
 free S_ID: bitstring [private]. (*sensor id*)
-free S_C1, S_C2, S_C3: bitstring [private].  (* PUF challenges *)
-free S_R1, S_R2, S_R3: bitstring [private].  (* Corresponding responses, assumed secret *)
+free S_C1, S_C2, S_C3: bitstring [private].  (* SN's PUF challenges *)
+free S_R1, S_R2, S_R3: bitstring [private].  (* SN's corresponding responses, assumed secret *)
 
 (*MP parameters*) 
 free MP_ID: bitstring. 
 free MP_PW: bitstring [private].
-free MP_BIO: bitstring [private].   (* Raw biometric data *)
-free MP_C1, MP_C2, MP_C3: bitstring.  (* Predefined challenges *)
-free MP_R1, MP_R2, MP_R3: bitstring [private].  (* Corresponding responses, assumed secret *)
+free MP_BIO: bitstring [private].   (* MP's raw biometric data *)
+free MP_C1, MP_C2, MP_C3: bitstring.  (* MP's PUF challenges *)
+free MP_R1, MP_R2, MP_R3: bitstring [private].  (* MP's corresponding responses, assumed secret *)
 
 (*event definition*) 
 event MP_reg_start(). 
