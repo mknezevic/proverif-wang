@@ -8,7 +8,7 @@ free GW_S_pvtch: channel [private].
 
 free fun_name_SNAuth: bitstring.
 
-(*sensor parameters*) 
+(*SN parameters*) 
 free S_ID: bitstring [private]. (*sensor id*)
 free S_C1, S_C2, S_C3: bitstring [private].  (* PUF challenges *)
 free S_R1, S_R2, S_R3: bitstring [private].  (* Corresponding responses, assumed secret *)
@@ -19,10 +19,6 @@ free MP_PW: bitstring [private].
 free MP_BIO: bitstring [private].   (* Raw biometric data *)
 free MP_C1, MP_C2, MP_C3: bitstring.  (* Predefined challenges *)
 free MP_R1, MP_R2, MP_R3: bitstring [private].  (* Corresponding responses, assumed secret *)
-
-(*GWN parameters*)
-free GWN_ID: bitstring.
-free GWN_g: bitstring [private].
 
 (*event definition*) 
 event MP_reg_start(). 
@@ -56,10 +52,6 @@ fun pair(bitstring, bitstring): bitstring.
 fun Gen(bitstring): bitstring.
 fun Rep(bitstring): bitstring.
 fun fuzzy_extract(bitstring): bitstring.
-
-fun smart_contract(bitstring, bitstring): bitstring.
-fun sregister(bitstring, bitstring): bitstring.
-fun mpregister(bitstring, bitstring): bitstring.
 
 equation forall m:bitstring, n:bitstring; xor(xor(m,n),n)=m.
 equation forall b: bitstring; fuzzy_extract(b) = con(Gen(b), Rep(b)).
